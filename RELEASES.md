@@ -3,9 +3,16 @@
 Each release is a folder with the raw pages (one `.tar` per part), the database (`colombia.duckdb.zst`),
 `state.json`, the logs and `SHA256SUMS`. Check a download with `sha256sum -c SHA256SUMS`.
 
+To download from Google Drive, open the folder and download each file (no account needed), or copy the whole
+folder with [rclone](https://rclone.org) and any Google Drive remote you have configured:
+
+```bash
+rclone copy gdrive: impactu-dev-2026-11-08 --drive-root-folder-id 1jXVJz-ckCbgwvc4eGe1AObVN6_LmG4mB -P
+```
+
 | Release | API | Downloaded | Works | Database | Where |
 | --- | --- | --- | ---: | --- | --- |
-| `impactu-dev-2026-11-08` | `api.dev.impactu.colav.co` | lists 2026-10-26 to 11-05, full author lists 11-08 | 2,891,978 | DuckDB 2.0.0, 4.5 GB (1.3 GB zstd) | Google Drive (link on request) |
+| `impactu-dev-2026-11-08` | `api.dev.impactu.colav.co` | lists 2026-10-26 to 11-05, full author lists 11-08 | 2,891,978 | DuckDB 2.0.0, 4.5 GB (1.3 GB zstd) | [Google Drive](https://drive.google.com/drive/folders/1jXVJz-ckCbgwvc4eGe1AObVN6_LmG4mB) |
 
 ## impactu-dev-2026-11-08
 

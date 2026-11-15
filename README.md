@@ -27,7 +27,8 @@ institution only. Every step can be interrupted and resumed.
 
 ## Quick start: use a published release
 
-1. Download `colombia.duckdb.zst` from a release (see [RELEASES.md](RELEASES.md)) and unpack it:
+1. Download `colombia.duckdb.zst` (1.3 GB) from the [latest release](https://drive.google.com/drive/folders/1jXVJz-ckCbgwvc4eGe1AObVN6_LmG4mB) (all releases in
+   [RELEASES.md](RELEASES.md)) and unpack it:
 
    ```bash
    zstd -d colombia.duckdb.zst
