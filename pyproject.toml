@@ -1,0 +1,20 @@
+[project]
+name = "impactu-duckdb"
+version = "1.0.0"
+description = "Download every ImpactU research product from its public API and analyse them with DuckDB"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["duckdb>=2.0", "requests>=2.31"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 150
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

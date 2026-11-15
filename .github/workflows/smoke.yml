@@ -1,0 +1,27 @@
+# Manual end-to-end check against the live API: crawl one researcher's products, fetch cut
+# author lists, build and query. Run it from the Actions tab before starting a long crawl.
+name: smoke test (live API)
+on:
+  workflow_dispatch:
+    inputs:
+      path:
+        description: products route to crawl
+        default: /person/0000177733/research/products
+      api_base:
+        description: ImpactU API
+        default: https://api.dev.impactu.colav.co
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      IMPACTU_API_BASE: ${{ inputs.api_base }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python scripts/crawl.py "${{ inputs.path }}" data/smoke --size 50 --pause 2 --authors-count ""
+      - run: python scripts/fetch_authors.py data/smoke --pause 2
+      - run: python scripts/build.py data/smoke --dataset smoke --db data/smoke.duckdb
+      - run: python scripts/q.py --db data/smoke.duckdb "SELECT year, count(*) n FROM works GROUP BY year ORDER BY year DESC LIMIT 10"

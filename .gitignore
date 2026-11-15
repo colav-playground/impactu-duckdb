@@ -1,0 +1,11 @@
+# downloaded pages, databases and release packages stay out of git
+colombia/
+data/
+releases/
+*.duckdb
+*.duckdb.wal
+*.log
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
