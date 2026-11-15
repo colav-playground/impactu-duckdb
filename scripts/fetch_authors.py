@@ -9,7 +9,7 @@ the first 100 authors of each work, with the true total in authors_count
 (https://help.impactu.colav.co/guides/authorship). For every work in PAGES_DIR
 with authors_count > len(authors), this calls GET /work/{id}/authors (all
 authors, same order, a superset of the list fields) and saves the response as
-OUT/<work_id>.json.gz. OUT defaults to PAGES_DIR + "_authors"; build.py reads it
+OUT/<work_id>.json.gz (percent-encoded, since ids such as DOIs contain slashes). OUT defaults to PAGES_DIR + "_authors"; build.py reads it
 from there and puts the full list back before flattening.
 
 Resumable: works already in OUT are skipped. Errors are retried with growing
@@ -26,7 +26,7 @@ import time
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build import page_files, read_json  # noqa: E402
+from build import authors_file, page_files, read_json  # noqa: E402
 
 BASE = os.environ.get("IMPACTU_API_BASE", "https://api.dev.impactu.colav.co").rstrip("/")
 
@@ -77,7 +77,7 @@ def main():
     mpath = os.path.join(out, "missing.json")
     missing = json.load(open(mpath)) if os.path.exists(mpath) else []
     for i, (wid, n, have) in enumerate(todo, 1):
-        f = os.path.join(out, f"{wid}.json.gz")
+        f = authors_file(out, wid)
         if os.path.exists(f) or wid in missing:
             continue
         t = time.time()

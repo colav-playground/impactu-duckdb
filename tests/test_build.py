@@ -1,4 +1,5 @@
 """Offline tests: build a database from the fixture pages and check the flattened tables."""
+import json
 import os
 import subprocess
 import sys
@@ -73,3 +74,25 @@ def test_year_slices_cover_everything():
     s = crawl_all.year_slices()
     assert s[0] == ("y0000", "0") and s[1] == ("y0001-1899", "1,1899") and s[-1][1].endswith(",9999")
     assert crawl_all.year_slices("2020-2021") == [("y2020", "2020"), ("y2021", "2021")]
+
+
+def test_products_sharing_an_api_id_are_kept(tmp_path):
+    """Since November 2026 a product's id is its first external id; a few DOIs belong to several products."""
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    a = {"id": "10.1/x", "title": "One", "external_ids": [{"source": "scienti", "id": "1-1"}], "authors": [], "authors_count": 0}
+    b = {**a, "title": "Two", "external_ids": [{"source": "scienti", "id": "2-2"}]}
+    (pages / "page_0001.json").write_text(json.dumps({"data": [a, b, a], "meta": {"count": 2}}))
+    path = str(tmp_path / "s.duckdb")
+    out = subprocess.run([sys.executable, os.path.join(SCRIPTS, "build.py"), str(pages), "--dataset", "s", "--db", path],
+                         capture_output=True, text=True, check=True).stdout
+    assert "2 unique works from 3 records (1 duplicates)" in out
+    con = duckdb.connect(path, read_only=True)
+    assert con.execute("SELECT work_id, api_id, title FROM works ORDER BY work_id").fetchall() == [
+        ("10.1/x", "10.1/x", "One"), ("10.1/x#2", "10.1/x", "Two")]
+
+
+def test_full_author_list_must_match_the_record():
+    cut = [{"id": "a"}, {"id": "b"}]
+    assert build.same_start([{"id": "a"}, {"id": "b"}, {"id": "c"}], cut)
+    assert not build.same_start([{"id": "z"}, {"id": "b"}, {"id": "c"}], cut)

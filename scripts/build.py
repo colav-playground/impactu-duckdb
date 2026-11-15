@@ -10,19 +10,21 @@ re-running after more pages arrive just refreshes it. Works repeated across page
 are kept once (first occurrence).
 
 Product lists now return only the first 100 authors of a work (authors_count keeps
-the total). Full lists saved by fetch_authors.py in PAGES_DIR_authors/<id>.json.gz
+the total). Full lists saved by fetch_authors.py in PAGES_DIR_authors/<quoted id>.json.gz
 (or --authors-dir) replace the cut ones; works still cut are counted in a warning.
 """
 import argparse
 import datetime as dt
 import glob
 import gzip
+import hashlib
 import json
 import os
 import re
 import shutil
 import tempfile
 import time
+from urllib.parse import quote
 
 import duckdb
 
@@ -31,7 +33,7 @@ COT = dt.timezone(dt.timedelta(hours=-5))
 # table -> ordered {column: DuckDB type}
 SCHEMA = {
     "works": {
-        "dataset": "VARCHAR", "work_id": "VARCHAR", "title": "VARCHAR", "year": "INTEGER",
+        "dataset": "VARCHAR", "work_id": "VARCHAR", "api_id": "VARCHAR", "title": "VARCHAR", "year": "INTEGER",
         "date_published": "DATE", "language": "VARCHAR", "doi": "VARCHAR", "openalex_id": "VARCHAR",
         "authors_count": "INTEGER", "impactu_type": "VARCHAR", "openalex_type": "VARCHAR",
         "scienti_code": "VARCHAR", "scienti_type": "VARCHAR", "minciencias_type": "VARCHAR",
@@ -168,7 +170,8 @@ def flatten(w, ds, page_file, out, authors, journals):
     pub = src.get("publisher") or {}
     title = w.get("title") or by_source(w.get("titles"), "openalex", "title") or ((w.get("titles") or [{}])[0].get("title"))
     out["works"].append({
-        "dataset": ds, "work_id": wid, "title": title, "year": w.get("year_published") if isinstance(w.get("year_published"), int) else None,
+        "dataset": ds, "work_id": wid, "api_id": w.get("api_id", wid),
+        "title": title, "year": w.get("year_published") if isinstance(w.get("year_published"), int) else None,
         "date_published": to_date(ts), "language": w.get("language") or None, "doi": w.get("doi") or None,
         "openalex_id": ext_id(w.get("external_ids"), "openalex"), "authors_count": w.get("authors_count"),
         "impactu_type": by_source(types, "impactu", "type"), "openalex_type": by_source(types, "openalex", "type"),
@@ -275,6 +278,25 @@ def page_files(path):
     return sorted(files, key=lambda f: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", os.path.basename(f))])
 
 
+def signature(w):
+    """What tells apart two products that the API gives the same id (since November 2026 the id is the
+    product's first external id, e.g. a DOI, and a few DOIs or handles belong to several products)."""
+    key = json.dumps([sorted(json.dumps(e, sort_keys=True) for e in w.get("external_ids") or []), w.get("title"), w.get("titles")],
+                     sort_keys=True, ensure_ascii=False)
+    return hashlib.sha1(key.encode()).hexdigest()
+
+
+def same_start(full, cut):
+    """True when a full author list from /work/{id}/authors begins with the record's cut list (same product)."""
+    ids = [a.get("id") or a.get("full_name") for a in cut]
+    return [a.get("id") or a.get("full_name") for a in full[:len(ids)]] == ids
+
+
+def authors_file(adir, wid):
+    """File of a work's full author list. Ids can be DOIs or handles with slashes, so they are percent-encoded."""
+    return os.path.join(adir, quote(str(wid), safe="") + ".json.gz")
+
+
 def read_json(path):
     with (gzip.open(path, "rt", encoding="utf-8") if path.endswith(".gz") else open(path, encoding="utf-8")) as f:
         return json.load(f)
@@ -318,14 +340,18 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix="impactu_build_")
     handles = {t: gzip.open(os.path.join(tmp, f"{t}.ndjson.gz"), "wt", encoding="utf-8") for t in SCHEMA}
-    seen, authors, journals = set(), {}, {}
+    seen, authors, journals = {}, {}, {}  # api id -> signatures of the distinct products with that id
     adir = args.authors_dir or (args.pages.rstrip("/") + "_authors" if os.path.isdir(args.pages) else "")
     n_full = n_cut = 0
-    n_raw = n_dup = n_noyear = 0
+    n_raw = n_dup = n_noyear = n_shared = 0
     meta_count = None
     # crawl_all.py pages each carry the count of their own year slice, not of the part
     sliced = crawl_all_expected(args.pages)
     t0 = time.time()
+
+    def n_works():
+        return sum(len(v) for v in seen.values())
+
     try:
         for i, path in enumerate(files, 1):
             d = read_json(path)
@@ -337,16 +363,21 @@ def main():
                 out["work_abstracts"] = None
             for w in items or []:
                 n_raw += 1
-                if w.get("id") in seen:
+                sigs, sig = seen.setdefault(w.get("id"), []), signature(w)
+                if sig in sigs:
                     n_dup += 1
                     continue
-                seen.add(w.get("id"))
+                sigs.append(sig)
+                if len(sigs) > 1:  # another product with the same API id: keep it, under id#2, id#3, ...
+                    w["api_id"], w["id"] = w.get("id"), f"{w.get('id')}#{len(sigs)}"
+                    n_shared += 1
                 if not isinstance(w.get("year_published"), int):
                     n_noyear += 1
                 if (w.get("authors_count") or 0) > len(w.get("authors") or []):
-                    fa = os.path.join(adir, f"{w.get('id')}.json.gz") if adir else ""
-                    if fa and os.path.exists(fa):
-                        w["authors"] = read_json(fa).get("data") or w.get("authors")
+                    fa = authors_file(adir, w.get("api_id", w.get("id"))) if adir else ""
+                    full = (read_json(fa).get("data") or []) if fa and os.path.exists(fa) else []
+                    if full and same_start(full, w.get("authors") or []):
+                        w["authors"] = full
                         n_full += 1
                     if (w.get("authors_count") or 0) > len(w.get("authors") or []):
                         n_cut += 1
@@ -355,7 +386,7 @@ def main():
                 for r in rows or []:
                     handles[t].write(json.dumps(r, ensure_ascii=False) + "\n")
             if i % 50 == 0 or i == len(files):
-                print(f"{i}/{len(files)} files, {len(seen)} works, {time.time() - t0:.0f}s", flush=True)
+                print(f"{i}/{len(files)} files, {n_works()} works, {time.time() - t0:.0f}s", flush=True)
         for r in authors.values():
             handles["authors"].write(json.dumps(r, ensure_ascii=False) + "\n")
         for r in journals.values():
@@ -382,7 +413,7 @@ def main():
         con.execute("INSERT INTO datasets VALUES (?, ?, ?, ?, ?, ?, ?, ?, now())",
                     [args.dataset, os.path.abspath(args.pages), manifest.get("api_path"),
                      json.dumps(manifest.get("params")) if manifest.get("params") else None,
-                     len(files), len(seen), n_dup, api])
+                     len(files), n_works(), n_dup, api])
         con.execute("COMMIT")
         for t in SCHEMA:
             n = con.execute(f"SELECT count(*) FROM {t} WHERE dataset = ?", [args.dataset]).fetchone()[0]
@@ -390,18 +421,20 @@ def main():
         con.close()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"dataset {args.dataset}: {len(seen)} unique works from {n_raw} records ({n_dup} duplicates), "
+    print(f"dataset {args.dataset}: {n_works()} unique works from {n_raw} records ({n_dup} duplicates), "
           f"{'expected (state.json)' if sliced and 'count' not in manifest else 'API count'} {api}, "
           f"{time.time() - t0:.0f}s -> {args.db}")
+    if n_shared:
+        print(f"{n_shared} products share their API id with another product; they are kept as <id>#2, #3, ... (api_id keeps the id)")
     if n_full:
         print(f"{n_full} cut author lists replaced by full lists from {adir}")
     if n_cut:
         print(f"WARNING: {n_cut} works keep a cut author list (first 100 only); run fetch_authors.py {args.pages} and rebuild")
-    got = len(seen)
+    got = n_works()
     if sliced and sliced[0] == "noyear" and "count" not in manifest:
         got = n_noyear
-        if len(seen) > n_noyear:
-            print(f"{len(seen) - n_noyear} works with a year came with the year-less pages; "
+        if n_works() > n_noyear:
+            print(f"{n_works() - n_noyear} works with a year came with the year-less pages; "
                   f"they are also in the year part, so count distinct work_id across datasets")
     if api and got < api:
         print(f"WARNING: {api - got} works missing (crawl incomplete or pages shifted)")

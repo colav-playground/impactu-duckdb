@@ -140,6 +140,10 @@ Then add a row to [RELEASES.md](RELEASES.md).
   at the start.
 - **No-year pages.** The no-year folders also contain a few works that have a year, which are in the year
   folders too, so count `DISTINCT work_id` across datasets.
+- **Shared ids.** The API's product id is the first external id (often the DOI), and a few ids belong to several
+  products. They are all kept: `work_id` gets `#2`, `#3`, ... and `api_id` keeps the API's id
+  ([schema](docs/schema.md)). `fetch_authors.py` can only fetch one author list per id; `build.py` uses it only
+  for the product it matches.
 - **Citations.** OpenAlex and Scholar counts differ, and both are valid. Say which one you used.
 - **Empty fields.** References, licences, SDGs and similar fields are still pending in ImpactU's ETL. Read an
   empty value as "not recorded in ImpactU", not "none".

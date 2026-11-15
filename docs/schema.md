@@ -9,12 +9,19 @@ downloaded part, e.g. `colombia_le100`). **Always filter or join on `dataset`**;
 
 | Group | Columns |
 | --- | --- |
-| Identity | `work_id`, `title`, `year`, `date_published` (DATE, from the epoch at Colombian midnight), `language`, `doi`, `openalex_id`, `authors_count` (the true total, even when the list was cut) |
+| Identity | `work_id` (unique; see below), `api_id` (the id the API gives), `title`, `year`, `date_published` (DATE, from the epoch at Colombian midnight), `language`, `doi`, `openalex_id`, `authors_count` (the true total, even when the list was cut) |
 | Types | `impactu_type` (ImpactU's unified type, e.g. `Artículo de revista`, `Libro`), `openalex_type` (`article`, `review`, ...), `scienti_code` / `scienti_type` (most specific SCIENTI level, e.g. `111`), `minciencias_type` |
 | Citations and access | `citations_openalex`, `citations_scholar`, `is_oa`, `oa_status`, `oa_url`, `apc_paid_usd` |
 | Venue | `source_id`, `source_name`, `issn_l`, `publisher`, `publisher_country`, `scimago_quartile`, `scimago_sjr`, `publindex_rank` (all **at the publication date**, from the journal ranking row that covers it) |
 | Pages and topic | `volume`, `issue`, `start_page`, `end_page`, `topic`, `subfield`, `field`, `domain` (OpenAlex primary topic) |
 | Bookkeeping | `n_groups`, `page_file` (the raw page the work came from) |
+
+Since November 2026 the API identifies a product by its first external id (DOI, OpenAlex, ScienTI
+`COD_RH-COD_PROD`, DSpace handle, ...), and a few of those ids belong to several products (one DOI to up to
+147). `build.py` keeps them all: the first keeps the API id, the next ones get `work_id` = `<id>#2`, `<id>#3`, ...,
+and `api_id` keeps the API's id. Use `api_id` to call the API (`/work/{api_id}`, with its slashes as they are).
+Databases built before this change (release `impactu-dev-2026-11-08`) have 24-character internal ids and no
+`api_id` column. Build into a new database file when the schema changes.
 
 ## Other tables
 
